@@ -1,2 +1,2 @@
-# resistanceManagement
-Some simulation studies into resistance management with targeted extinction of resistant populations
+# Resistance Management with Targeted Extinction
+Inspired by the strategy of crop rotation following unextpected damage to rootworm resistant transgenic crops. The idea is that targeted elimination of resistant populations through crop rotation inposes a sort of pseudo frequency dependent selection - the more frequent resistance alleles become, they higher the chance they will be in a population that is wiped out.
