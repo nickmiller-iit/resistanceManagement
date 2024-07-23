@@ -1,0 +1,360 @@
+initialize() {
+	//simulation constants	
+	defineConstant("metapopRows", 10); //number of rows in the grid of subpops
+	defineConstant("metapopCols", 10); // number of cols in the grid of subpops
+	defineConstant("subPopSize", 500); // This is the size of a subpopulation that is not currently in "culled" status
+	defineConstant("baselineMigration", 0.0025); // the migration rate when not recolonizing a previously culled population
+	defineConstant("culledEmmigration", 1e-7); // setting migration from culled demes to 0 causes a bug whereing source demes can be lost from subpopulation's immigrantSubpopIDs property, causing the sim to crash
+	defineConstant("reportingInterval", 1); //generation interval at which to report pop sizes, allele freqs
+	defineConstant("simID", getSeed()); // a (hopefully) unique dientifier for each simulation run
+	
+	//we do not have new mutations occuring during the siumulation. Instead we start the simulation at 1: early with an existing resistance allele
+	initializeMutationRate(0);
+	defineConstant("startingResistanceFreq", 0.01);
+	
+	
+	//initializeMutationType("m1", 0.5, "f", 0.0); // m1 mutation type: neutral
+	initializeMutationType("m1", 0.0, "f", 0.9); //recessive resistance with s = 0.9s 
+	//do not convert to substitution if fixed	
+	m1.convertToSubstitution = F;
+	
+	// g1 genomic element type: uses m1 for all mutations
+	initializeGenomicElementType("g1", m1, 1.0);
+	
+	// uniform chromosome of length 200 bases with no recombination
+	initializeGenomicElement(g1, 0, 200);
+	initializeRecombinationRate(0);
+
+}
+
+
+1 early() {
+	//create a 2D stepping-stone grid of populations	
+	
+	
+	//Create the initial subpops
+	for (i in 1:(metapopRows * metapopCols))
+	{
+		sim.addSubpop(i, subPopSize);
+	}
+	
+	
+	// To help us keep trackwhile of the gridded populations, set up a matrix of subpop indexes
+	defineConstant("subpopIDX", matrix(0:((metapopRows * metapopCols)-1), nrow = metapopRows, ncol = metapopCols, byrow = T));
+	
+	// Set up the 2D stepping stone migration model
+	
+	for (r in 0:(metapopRows - 1))
+	{
+		for (c in 0:(metapopCols - 1))
+		{
+			// get the current population index
+			idx = c(subpopIDX[r,c]);
+			//
+			//print(idx);
+			//print(sim.subpopulations[idx]);
+			
+			//migration from the left
+			if (c == 0)
+			{
+				sourcePop = sim.subpopulations[c(subpopIDX[r,(metapopCols - 1)])];
+				sim.subpopulations[idx].setMigrationRates(sourcePop, baselineMigration);
+			}
+			else
+			{
+				sourcePop = sim.subpopulations[c(subpopIDX[r,(c - 1)])];
+				sim.subpopulations[idx].setMigrationRates(sourcePop, baselineMigration);
+			}
+			//migration from the right
+			if (c == (metapopCols - 1))
+			{
+				sourcePop = sim.subpopulations[c(subpopIDX[r,0])];
+				sim.subpopulations[idx].setMigrationRates(sourcePop, baselineMigration);
+			}
+			else
+			{
+				sourcePop = sim.subpopulations[c(subpopIDX[r,(c + 1)])];
+				sim.subpopulations[idx].setMigrationRates(sourcePop, baselineMigration);
+			}
+			//migration from above
+			if (r == 0)
+			{
+				sim.subpopulations[idx].setMigrationRates(sim.subpopulations[c(subpopIDX[(metapopRows - 1),c])], baselineMigration);
+			}
+			else
+			{
+				sourcePop = sim.subpopulations[c(subpopIDX[(r - 1),c])];
+				sim.subpopulations[idx].setMigrationRates(sourcePop, baselineMigration);
+			}
+			//migration from below
+			if (r == (metapopRows - 1))
+			{
+				sourcePop = sim.subpopulations[c(subpopIDX[0,c])];
+				sim.subpopulations[idx].setMigrationRates(sourcePop, baselineMigration);
+			}
+			else
+			{
+				sourcePop = sim.subpopulations[c(subpopIDX[(r + 1),c])];
+				sim.subpopulations[idx].setMigrationRates(sourcePop, baselineMigration);
+			}
+		}
+	} //done setting up migration
+	
+	//now that populations are created, and structure set up, add the resistance allele
+	//Note that starting allele frequency is not uniform across subpopulations - rather initial the number of R alleles in a subpop
+	//is a binomially distributed random number where the number of trials is the number of genomes in the subpop (ie 2N) and the probability of
+	//success is the global initial allele freq
+	//
+	//We also have to do a bit of a trick here as we want all resistance alleles in all populations to be the same mutation within SLiM
+	//This means that we use genome.addNewDrawnMutation() this first time and genome.addMutations subsequently
+	mutationIsDrawn = F;
+	for (s in 0:(length(sim.subpopulations) - 1))
+	{
+		currentPop = sim.subpopulations[s];
+		resAlleleCount = rbinom(n = 1, size = length(currentPop.genomes), prob = startingResistanceFreq);
+		targets = sample(currentPop.genomes, resAlleleCount);
+		for (t in 0:(length(targets) - 1))
+		{
+			if (mutationIsDrawn)
+			{
+				targets[t].addMutations(sim.mutations[0]);
+			}
+			else
+			{
+				targets[t].addNewDrawnMutation(m1, 100);
+				mutationIsDrawn = T;
+			}
+		}
+	
+	}
+
+
+
+} // end 1: early
+
+
+1 late(){
+	//the cullMatrix is used to track which populations have been flagged for culling in the next tick	
+	defineGlobal("cullMatrix", matrix(logical(length = (metapopRows * metapopCols)), nrow = metapopRows, ncol = metapopCols, byrow = T));
+	//an extremely simple routine for deciding to cull a pop (will need improvement)
+	//pick a uniform random number x, if x <= resistance allele freq, mark for culling
+	//i.e. probability of culling directly proportional to allele freq
+	for (r in 0:(metapopRows - 1))
+	{
+		for (c in 0:(metapopCols - 1))
+		{
+			//trick - matrix[x,y] returns a 1-element matirx but c(matrix[x,y]) converts to a vector
+			targetPopIDX = c(subpopIDX[r,c]);
+			targetPopAlleleFreq = sim.mutationFrequencies(subpops = sim.subpopulations[targetPopIDX], mutations = sim.mutations[0]);
+			if (targetPopAlleleFreq >= runif(n = 1))
+			{
+				cullMatrix[r,c] = T;
+			}
+		}
+	}
+
+
+
+}//end 1: late()
+
+
+// Ticks for the remainder of the simulation
+
+// overview of the early() phase
+// set n = 1 for each deme tagged for cull
+// for each deme, set immigration to 0 from neighbouring demes that are being culled.
+// recolonize culled demes with eual migration from all non-culled neighbour.
+// Note that a culled deme surrounded by culled demes will stay at n = 1 and self-fertilize - not a problem, will get replaced evenually
+
+2:100 early(){
+	//reduce population size of any subpops marked for culling to 1
+	for (r in 0:(metapopRows - 1))
+	{
+		for (c in 0:(metapopCols - 1))
+		{
+			if (c(cullMatrix[r,c]))
+			{
+				targetPopIDX = c(subpopIDX[r,c]);
+//				print("culling");//DEBUG
+//				print(sim.subpopulations[targetPopIDX]);//DEBUG
+				sim.subpopulations[targetPopIDX].setSubpopulationSize(1);
+			}
+		}
+	}//end reduce pop size on culled pops
+	
+	// for each subpop, stop migration from any neighbours that are currently culled
+	//note that each subpop keeps a list of the id numbers of the pops from which it recieves migrants, along with the migration rates
+	//The id numbers start at 1, unlike the indices in EIDOS, which start at 0
+	//trick to getting a subpop by its id - sim.subpopulations.id gives a vector of IDs
+	//which() behaves as in R
+	//other part of the trick - c() on a 1 x 1 matrix converts ot a vector
+	for(s in 1:(length(sim.subpopulations) - 1))
+	{
+		nIDs = sim.subpopulations[s].immigrantSubpopIDs;
+		for (n in 0:(length(nIDs) - 1))
+		{
+			sourcePop = sim.subpopulations[which(sim.subpopulations.id == nIDs[n])];
+			if (sourcePop.individualCount == 1)
+			{				
+//				print("setting migration to 0");//DEBUG
+//				print(c(sim.subpopulations[s], sourcePop));//DEBUG
+				sim.subpopulations[s].setMigrationRates(sourcePop, culledEmmigration);
+			}
+		}
+	}
+	//pops that have been culled are recolonized by migration from neighbours, unless culled pop is itself surrounded by culled pops
+	for(s in 0:(length(sim.subpopulations) - 1)){
+		currentPop = sim.subpopulations[s];
+		if (currentPop.individualCount == 1) // current pop has been culled
+		{
+			recolSourceIDs = currentPop.immigrantSubpopIDs;
+			//a vector to indicate which source pops should be used for recolonozation and how many source pops there are in total
+			sourceTracker = integer(length = 4);
+			for (src in 0:3) // we should always have 4 source populations in a 2D model
+			{
+//				print(recolSourceIDs); //DEBUG
+//				print(src);				//DEBUG
+//				print(currentPop);//DEBUG
+//				print(currentPop.immigrantSubpopIDs); //DEBUG
+				sourcePop = sim.subpopulations[which(sim.subpopulations.id == recolSourceIDs[src])]; //BUG MANIFESTS HERE//
+				if (sourcePop.individualCount > 1)
+				{
+					sourceTracker[src] = 1;
+				}
+			
+			
+			}
+			//divide recolonization rate equally between non-culled neighbours
+			recolRate = (1.0 / sum(sourceTracker)) - 1e-5; //have to fudge the recolonization rate slightly to prevent errors of total immigaration rounding to > 1
+//			print(sum(sourceTracker)); //DEBUG
+//			print(recolRate); //DEBUG
+//			if ((recolRate * sum(sourceTracker)) > 1.0) // catch cases where rounding gives us a total immigration rate > 1.0
+//			{
+//				recolRate = (1.0 / sum(sourceTracker)) - 1e-7;
+//			}
+			if (sum(sourceTracker) > 0) //only recolonize if there are non-culled neighbours
+			{
+				currentPop.setSubpopulationSize(subPopSize);
+				for (src in 0:3)
+				{
+					if (sourceTracker[src] == 1)
+					{
+						//currentPop.setSubpopulationSize(subPopSize);
+						sourcePop = sim.subpopulations[which(sim.subpopulations.id == recolSourceIDs[src])];
+						currentPop.setMigrationRates(sourcePop, recolRate);
+					}
+				}
+			}
+		}
+	}
+
+}// end simulation ticks: early()
+
+
+// Overview of the late() phase
+//
+// check if the resitance allele has been lost, terminate simulation if so
+//
+// reporting: for each deme print population size (shows if culled or not), resistance allele frequency
+//
+// for each deme that was tagged for culling and recolonized
+// if recolonized (n  > 1)
+// 	-untag
+//		-reset migration rates (unless source is still in culled state)
+//
+// tag demes for culling in next tick
+
+2:100 late(){
+	// Check if resistance lost
+	if (length(sim.mutationsOfType(m1)) < 1)
+	{
+		print("# Resistance allele lost in generation " + sim.cycle);
+		//sim.simulationFinished(); //doesnt work, still continues to the end of the tick
+		stop(); //end simulation immediately
+	}
+	//reporting
+	if((sim.cycle % reportingInterval) < 0.5)
+	{
+		repGeneration = sim.cycle;
+		repN = sim.subpopulations.individualCount;
+		repFreqs = c();
+		for(s in sim.subpopulations)
+		{
+			repFreqs = c(repFreqs, sim.mutationFrequencies(subpops = s, mutations = sim.mutationsOfType(m1)));
+		}
+		print(paste(c(format("%i", simID), repGeneration, repN, repFreqs)));
+	}
+
+
+	//Reset cull flags
+	for (r in 0:(metapopRows - 1)) 
+	{
+		for (c in 0:(metapopCols - 1))
+		{
+			if (c(cullMatrix[r,c]))
+			{
+				currentPopIDX = c(subpopIDX[r,c]);
+				currentPop = sim.subpopulations[currentPopIDX];
+				if(currentPop.individualCount > 1)
+				{
+					cullMatrix[r,c] = F;
+					//reset all migration rates
+					sourceIDs = currentPop.immigrantSubpopIDs;
+				}
+			}
+		}
+	} // end reset cull flags
+	
+	// reset migration rates for all demes - probably slightly inefficient, but trying to squash a bug.
+	for (currentPop in sim.subpopulations)
+	{
+		sourceIDs = currentPop.immigrantSubpopIDs;
+		assert (length(sourceIDs) == 4, message = "Whoops at line 283 number of source pops in " + currentPop.name + " != 4");
+		for (s in sourceIDs)
+		{
+			sourcePop = sim.subpopulations[which(sim.subpopulations.id == s)];
+			if(sourcePop.individualCount > 1)
+			{
+				currentPop.setMigrationRates(sourcePop, baselineMigration);
+			}
+			else
+			{
+				currentPop.setMigrationRates(sourcePop, culledEmmigration);
+			}
+		}
+		
+	}	//end reset migration rates
+	
+	//an extremely simple routine for deciding to cull a pop (will need improvement)
+	//pick a uniform random number x, if x <= resistance allele freq, mark for culling
+	//i.e. probability of culling directly proportional to allele freq
+	for (r in 0:(metapopRows - 1))
+	{
+		for (c in 0:(metapopCols - 1))
+		{
+			//trick - matrix[x,y] returns a 1-element matirx but c(matrix[x,y]) converts to a vector
+			targetPopIDX = c(subpopIDX[r,c]);
+			targetPopAlleleFreq = sim.mutationFrequencies(subpops = sim.subpopulations[targetPopIDX], mutations = sim.mutations[0]); // if mutation is lost, we crash here
+			if (targetPopAlleleFreq >= runif(n = 1))
+			{
+				cullMatrix[r,c] = T;
+			}
+		}
+	}
+
+
+
+}// end simulation ticks: late()
+
+
+
+
+
+
+// output samples of 10 genomes periodically, all fixed mutations at end
+//5 late() { p1.outputSample(10); }
+//10 late() { p1.outputSample(10); }
+//2000 late() { sim.outputFixedMutations(); }
+
+
+
