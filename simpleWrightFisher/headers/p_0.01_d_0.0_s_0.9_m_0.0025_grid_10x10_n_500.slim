@@ -1,0 +1,32 @@
+// Fully recessive resistance with strong selection
+// total baseline immigration 0.01
+// initial allele frequency 0.01
+//
+
+initialize() {
+	//simulation constants	
+	defineConstant("metapopRows", 10); //number of rows in the grid of subpops
+	defineConstant("metapopCols", 10); // number of cols in the grid of subpops
+	defineConstant("subPopSize", 500); // This is the size of a subpopulation that is not currently in "culled" status
+	defineConstant("baselineMigration", 0.0025); // the migration rate when not recolonizing a previously culled population
+	defineConstant("culledEmmigration", 1e-7); // setting migration from culled demes to 0 causes a bug whereing source demes can be lost from subpopulation's immigrantSubpopIDs property, causing the sim to crash
+	defineConstant("reportingInterval", 1); //generation interval at which to report pop sizes, allele freqs
+	defineConstant("simID", getSeed()); // a (hopefully) unique dientifier for each simulation run
+	
+	//we do not have new mutations occuring during the siumulation. Instead we start the simulation at 1: early with an existing resistance allele
+	initializeMutationRate(0);
+	defineConstant("startingResistanceFreq", 0.01);
+	
+	
+	initializeMutationType("m1", 0.0, "f", 0.9); //recessive resistance with s = 0.9s 
+	//do not convert to substitution if fixed	
+	m1.convertToSubstitution = F;
+	
+	// g1 genomic element type: uses m1 for all mutations
+	initializeGenomicElementType("g1", m1, 1.0);
+	
+	// uniform chromosome of length 200 bases with no recombination
+	initializeGenomicElement(g1, 0, 200);
+	initializeRecombinationRate(0);
+
+}

@@ -1,0 +1,49 @@
+simBody=simpleWrightFisherSimBody.slim
+headerDir=headers
+simHeader=$(headerDir)/p_0.01_d_0.0_s_0.9_m_0.0025_grid_10x10_n_500.slim
+
+tmpDir=tmp
+
+$(tmpDir):
+	if [ ! -d $(tmpDir) ]; then mkdir $(tmpDir); fi
+
+simScript=tmp/simulation.slim
+
+$(simScript): $(simBody) $(simHeader) | $(tmpDir)
+	sed '/INCLUDE_INIT/r $(simHeader)' $(simBody) > $(simScript)
+
+.PHONY: script
+
+script: $(simScript)
+
+# Run 100 replicate simulations
+
+reps=$(shell seq -w 1 100)
+
+tmpResults=$(addprefix $(tmpDir)/,$(reps))
+
+$(tmpResults): $(simScript)
+	slim $(simScript) > $@
+
+.PHONY: temp
+
+temp: $(tmpResults)
+
+# Combine replicate sims
+# SLiM insists on printing some initialization info to stdout. Get rid of that
+# Note that SLiM insists on adding quotes to ouput lines use these to get rid
+# init messages but then remove quotes.
+resultsDir=results
+
+$(resultsDir):
+	if [ ! -d $(resultsDir) ]; then mkdir $(resultsDir); fi
+
+results=$(resultsDir)/$(notdir $(basename $(simHeader)))
+
+$(results): $(tmpResults) | $(resultsDir)
+	cat $(tmpResults) | grep ^\" | tr -d '\"' > $(results)
+	rm -r tmp
+
+.PHONY: all
+
+all: $(results)
