@@ -1,7 +1,7 @@
 initialize() {
 	//simulation constants	
-	defineConstant("metapopRows", 10); //number of rows in the grid of subpops
-	defineConstant("metapopCols", 10); // number of cols in the grid of subpops
+	defineConstant("metapopRows", 5); //number of rows in the grid of subpops
+	defineConstant("metapopCols", 5); // number of cols in the grid of subpops
 	defineConstant("subPopSize", 500); // This is the size of a subpopulation that is not currently in "culled" status
 	defineConstant("baselineMigration", 0.0025); // the migration rate when not recolonizing a previously culled population
 	defineConstant("culledEmmigration", 1e-7); // setting migration from culled demes to 0 causes a bug whereing source demes can be lost from subpopulation's immigrantSubpopIDs property, causing the sim to crash
