@@ -119,20 +119,40 @@
 	//an extremely simple routine for deciding to cull a pop (will need improvement)
 	//pick a uniform random number x, if x <= resistance allele freq, mark for culling
 	//i.e. probability of culling directly proportional to allele freq
+//	for (r in 0:(metapopRows - 1))
+//	{
+//		for (c in 0:(metapopCols - 1))
+//		{
+			//trick - matrix[x,y] returns a 1-element matirx but c(matrix[x,y]) converts to a vector
+//			targetPopIDX = c(subpopIDX[r,c]);
+//			targetPopAlleleFreq = sim.mutationFrequencies(subpops = sim.subpopulations[targetPopIDX], mutations = sim.mutations[0]);
+//			if (targetPopAlleleFreq >= runif(n = 1))
+//			{
+//				cullMatrix[r,c] = T;
+//			}
+//		}
+//	}
+//
+
+	//an extremely simple routine for deciding to cull a pop (will need improvement)
+	//pick a uniform random number x, if x <= resistance allele homozygotes, mark for culling
+	//i.e. probability of culling directly proportional to frequency of resistant homozygotes
 	for (r in 0:(metapopRows - 1))
 	{
 		for (c in 0:(metapopCols - 1))
 		{
-			//trick - matrix[x,y] returns a 1-element matirx but c(matrix[x,y]) converts to a vector
+			//trick - matrix[x,y] returns a 1-element matrix but c(matrix[x,y]) converts to a vector
 			targetPopIDX = c(subpopIDX[r,c]);
-			targetPopAlleleFreq = sim.mutationFrequencies(subpops = sim.subpopulations[targetPopIDX], mutations = sim.mutations[0]);
-			if (targetPopAlleleFreq >= runif(n = 1))
+			//targetPopAlleleFreq = sim.mutationFrequencies(subpops = sim.subpopulations[targetPopIDX], mutations = sim.mutations[0]);
+			targetPopResistantInds = sum(sim.subpopulations[targetPopIDX].individuals.countOfMutationsOfType(m1) == 2);
+			targetPopResistantIndFreq = targetPopResistantInds / sim.subpopulations[targetPopIDX].individualCount;
+			if (targetPopResistantIndFreq >= runif(n = 1))
 			{
 				cullMatrix[r,c] = T;
 			}
 		}
 	}
-
+	
 
 
 }//end 1: late()
@@ -308,20 +328,41 @@
 	//an extremely simple routine for deciding to cull a pop (will need improvement)
 	//pick a uniform random number x, if x <= resistance allele freq, mark for culling
 	//i.e. probability of culling directly proportional to allele freq
+//	for (r in 0:(metapopRows - 1))
+//	{
+//		for (c in 0:(metapopCols - 1))
+//		{
+//			//trick - matrix[x,y] returns a 1-element matirx but c(matrix[x,y]) converts to a vector
+//			targetPopIDX = c(subpopIDX[r,c]);
+//			targetPopAlleleFreq = sim.mutationFrequencies(subpops = sim.subpopulations[targetPopIDX], mutations = sim.mutations[0]); // if mutation is lost, we crash here
+//			if (targetPopAlleleFreq >= runif(n = 1))
+//			{
+//				cullMatrix[r,c] = T;
+//			}
+//		}
+//	}
+
+
+
+	//an extremely simple routine for deciding to cull a pop (will need improvement)
+	//pick a uniform random number x, if x <= resistance allele homozygotes, mark for culling
+	//i.e. probability of culling directly proportional to frequency of resistant homozygotes
 	for (r in 0:(metapopRows - 1))
 	{
 		for (c in 0:(metapopCols - 1))
 		{
-			//trick - matrix[x,y] returns a 1-element matirx but c(matrix[x,y]) converts to a vector
+			//trick - matrix[x,y] returns a 1-element matrix but c(matrix[x,y]) converts to a vector
 			targetPopIDX = c(subpopIDX[r,c]);
-			targetPopAlleleFreq = sim.mutationFrequencies(subpops = sim.subpopulations[targetPopIDX], mutations = sim.mutations[0]); // if mutation is lost, we crash here
-			if (targetPopAlleleFreq >= runif(n = 1))
+			//targetPopAlleleFreq = sim.mutationFrequencies(subpops = sim.subpopulations[targetPopIDX], mutations = sim.mutations[0]);
+			targetPopResistantInds = sum(sim.subpopulations[targetPopIDX].individuals.countOfMutationsOfType(m1) == 2);
+			targetPopResistantIndFreq = targetPopResistantInds / sim.subpopulations[targetPopIDX].individualCount;
+			if (targetPopResistantIndFreq >= runif(n = 1))
 			{
 				cullMatrix[r,c] = T;
 			}
 		}
 	}
-
+	
 
 
 }// end simulation ticks: late()
